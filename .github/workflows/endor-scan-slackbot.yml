@@ -1,0 +1,99 @@
+name: Endor PR Scan
+
+on:
+  pull_request:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1️⃣ Run Endor Labs Scan
+      - name: Endor Labs SCA Security
+        uses: endorlabs/github-action@main
+        env:
+          ENDOR_SCAN_PR: true
+        with:
+          namespace: tej-learn
+          api: "https://api.endorlabs.com"
+          enable_github_action_token: true
+          scan_dependencies: true
+          enable_pr_comments: true
+          pr: true
+          pr_incremental: true
+
+      # 2️⃣ Wait 2 seconds for comment to appear on GitHub
+      - name: Sleep
+        run: sleep 2
+
+      # 3️⃣ Fetch latest PR comment written by Endor bot
+      - name: Get Endor PR Comment
+        id: pr_comment
+        env:
+          GH_TOKEN: ${{ secrets.GH_PR_TOKEN }}
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          REPO="${{ github.repository }}"
+
+          # Fetch comments
+          COMMENTS=$(curl -s -H "Authorization: token $GH_TOKEN" \
+            "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments")
+
+          # Filter comment posted by endorlabs bot (author = app/endorlabs)
+          COMMENT=$(echo "$COMMENTS" \
+            | jq -r '.[] | select(.user.type == "Bot" or .user.login | contains("endor")) | .body' \
+            | head -n 1)
+
+          # Store for next step
+          echo "COMMENT<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      # 4️⃣ Get private GitHub email of PR author
+      - name: Get GitHub private email
+        id: gh_email
+        env:
+          GH_TOKEN: ${{ secrets.GH_PR_TOKEN }}
+        run: |
+          USER="${{ github.actor }}"
+          EMAIL=$(curl -s \
+            -H "Authorization: token $GH_TOKEN" \
+            https://api.github.com/users/$USER | jq -r '.email')
+
+          if [ "$EMAIL" = "null" ] || [ -z "$EMAIL" ]; then
+            EMAIL="${{ github.event.pull_request.user.email }}"
+          fi
+
+          echo "email=$EMAIL" >> $GITHUB_OUTPUT
+
+      # 5️⃣ Lookup Slack User by Email
+      - name: Lookup Slack User ID
+        id: slack_lookup
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: |
+          EMAIL="${{ steps.gh_email.outputs.email }}"
+          RESPONSE=$(curl -s -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            "https://slack.com/api/users.lookupByEmail?email=$EMAIL")
+          SLACK_ID=$(echo "$RESPONSE" | jq -r '.user.id')
+          echo "slack_id=$SLACK_ID" >> $GITHUB_OUTPUT
+
+      # 6️⃣ Send Slack DM
+      - name: Send Slack DM
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: |
+          CHANNEL="${{ steps.slack_lookup.outputs.slack_id }}"
+          TEXT="${{ steps.pr_comment.outputs.COMMENT }}"
+          PAYLOAD=$(jq -n \
+            --arg channel "$CHANNEL" \
+            --arg text "$TEXT" \
+            '{channel: $channel, text: $text}')
+
+          curl -X POST \
+               -H "Content-type: application/json" \
+               -H "Authorization: Bearer '"$SLACK_BOT_TOKEN"'" \
+               --data "$PAYLOAD" \
+               https://slack.com/api/chat.postMessage
