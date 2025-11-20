@@ -26,4 +26,3 @@ jobs:
           pr: false
           github_token: ${{ secrets.GH_PR_TOKEN }}
           scan_summary_output_type: table
-          pr_baseline: main
