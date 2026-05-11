@@ -22,7 +22,6 @@ jobs:
           enable_pr_comments: true
           pr: true
           pr_incremental: true
-          pr_baseline: "main"
           github_token: ${{ secrets.GH_PR_TOKEN }}
 
       # 2️⃣ Wait 2 seconds for comment to appear on GitHub
