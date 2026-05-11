@@ -18,7 +18,6 @@ jobs:
         with:
           namespace: tej-learn
           api: "https://api.endorlabs.com"
-          enable_github_action_token: true
           scan_dependencies: true
           enable_pr_comments: true
           pr: true
