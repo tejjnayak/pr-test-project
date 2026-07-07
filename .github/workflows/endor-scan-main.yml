@@ -24,5 +24,4 @@ jobs:
           api: "https://api.endorlabs.com"
           scan_dependencies: true
           pr: false
-          github_token: ${{ secrets.GH_PR_TOKEN }}
           scan_summary_output_type: table
